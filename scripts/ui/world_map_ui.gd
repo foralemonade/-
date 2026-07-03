@@ -123,8 +123,46 @@ func _on_battle_won_map() -> void:
 	var node_id: String = GameData.world_progress["current_node"]
 	if node_id != "" and not WorldMap.is_node_completed(node_id):
 		WorldMap.complete_and_unlock(node_id)
+		# 发放首通/重复通关奖励
+		var reward: Dictionary = RewardTable.grant_reward(node_id)
+		_show_reward_popup(reward, node_id)
 	# 自动存档
 	SaveManager.save_game()
+
+## 显示奖励弹窗
+func _show_reward_popup(reward: Dictionary, node_id: String) -> void:
+	if reward.is_empty():
+		return
+	var lbl := Label.new()
+	lbl.position = Vector2(340, 250)
+	lbl.size = Vector2(600, 220)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", Color(0.95, 0.88, 0.65))
+
+	var lines: Array[String] = []
+	lines.append("--- 战斗胜利！---")
+	var node_data: Dictionary = WorldMap.get_map_node(node_id)
+	lines.append("关卡: " + node_data.get("name", node_id))
+	if reward.get("is_first_clear", false):
+		lines.append("★ 首 通 ★")
+	else:
+		lines.append("重复通关")
+	if reward.get("creature_added", "") != "":
+		var data: Dictionary = GameData.get_creature_data(reward["creature_added"])
+		lines.append("获得生物: " + data.get("name", reward["creature_added"]))
+	if reward.get("gold", 0) > 0:
+		lines.append("金币 +%d" % reward["gold"])
+	for item_id: String in reward.get("items", {}):
+		lines.append("道具: %s x%d" % [GameData.get_item_data(item_id).get("name", item_id), reward["items"][item_id]])
+
+	lbl.text = "\n".join(lines)
+	add_child(lbl)
+	var tw: Tween = create_tween()
+	tw.tween_interval(3.0)
+	tw.tween_property(lbl, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(func(): lbl.queue_free())
 
 func _on_node_completed(node_id: String):
 	if node_buttons.has(node_id):

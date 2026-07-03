@@ -32,8 +32,8 @@ var _is_slow_mode: bool = false
 var _time_scale: float = 1.0
 
 func _ready() -> void:
-	castle = $Castle
-	wave_manager = $WaveManager
+	castle = $Castle as Castle
+	wave_manager = $WaveManager as WaveManager
 
 	# 确定战斗模式
 	_determine_battle_mode()

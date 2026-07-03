@@ -531,7 +531,7 @@ func _update_synergy_display(result: Dictionary) -> void:
 func _update_slot_labels() -> void:
 	if castle == null:
 		return
-	for i in range(min(slot_buttons.size(), castle.creature_slots.size()):
+	for i in range(min(slot_buttons.size(), castle.creature_slots.size())):
 		var slot: Dictionary = castle.creature_slots[i]
 		var pos_type: int = slot.get("position_type", 0)
 		var pos_name: String = GameData.get_position_name(pos_type)

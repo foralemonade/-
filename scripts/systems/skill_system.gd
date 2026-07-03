@@ -141,7 +141,7 @@ func _snipe_targets(container: Node, damage: float, count: int) -> void:
 		if e is Enemy and e.is_alive:
 			enemies.append(e)
 	enemies.sort_custom(func(a: Enemy, b: Enemy) -> bool: return a.current_health < b.current_health)
-	for i in range(min(count, enemies.size()):
+	for i in range(min(count, enemies.size())):
 		enemies[i].take_damage(damage)
 
 func _summon_reinforcement(castle: Castle, duration: float) -> void:

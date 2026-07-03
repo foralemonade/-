@@ -85,12 +85,18 @@ var item_database: Dictionary = {}
 # ============================================================
 # 玩家状态
 # ============================================================
+## 玩家拥有的生物列表 — 支持同名第二只第三只…
+## 元素类型 String (creature_id),重复 ID 表示多只该生物
+## 跨局 HP 通过 creature_id 追踪(同名多只共享 HP 简化)
 var player_creatures: Array[String] = []
+## 玩家拥有的模块(已装备) — 不分多实例
 var player_equipped_modules: Array[String] = []
+## 玩家库存模块(未装备) — 不分多实例
 var player_inventory_modules: Array[String] = []
 
 ## 生物健康状态追踪 — 跨局继承
 ## key = creature_id, value = { "current_hp": float, "max_hp": float, "stage": InjuryStage, "is_dead": bool }
+## 简化: 同名多只生物共享同一 HP 数据
 var creature_health: Dictionary = {}
 
 var faction_reputation: Dictionary = {
@@ -108,6 +114,10 @@ var world_progress: Dictionary = {
 	"challenge_high_score": 0, "challenge_wave": 0,
 	"max_challenge_waves": 20,
 	"battle_protection_count": 3,  # 新手保护: 前3局死亡自动复活
+	# 24h 免费复活 — key=creature_id, value=可免费复活的 unix timestamp
+	"free_resurrect_available": {},
+	# 死亡遗产 buff — key=slot_index, value={cid, expires_at_timestamp}
+	"legacy_buffs": {},
 }
 
 ## 城堡配置 — v0.4 加 core_hp
@@ -302,10 +312,13 @@ func _init_module_database() -> void:
 	module_database = {
 		"reinforced_armor":{"id":"reinforced_armor","name":"强化装甲","faction":Faction.TECH,"rarity":1,"type":"defense","value":20,"desc":"城堡护盾 +20"},
 		"energy_amplifier":{"id":"energy_amplifier","name":"能量增幅器","faction":Faction.TECH,"rarity":2,"type":"energy","value":0.5,"desc":"能量恢复速度 +0.5"},
+		"scanner_drone":{"id":"scanner_drone","name":"侦察无人机","faction":Faction.TECH,"rarity":1,"type":"scout","value":1,"desc":"战前预览下一波敌人信息"},
 		"prayer_altar":{"id":"prayer_altar","name":"祈祷祭坛","faction":Faction.FAITH,"rarity":1,"type":"regen","value":1.5,"desc":"城堡每秒恢复 1.5 护盾"},
-		"holy_totem":{"id":"holy_totem","name":"圣图腾","faction":Faction.FAITH,"rarity":2,"type":"slot","value":1,"desc":"站位格 +1"},
+		"holy_totem":{"id":"holy_totem","name":"圣图腾","faction":Faction.FAITH,"rarity":2,"type":"slot","value":1,"desc":"站位格 +1 (可叠加,最多 8)"},
+		"blessing_aura":{"id":"blessing_aura","name":"祝福光环","faction":Faction.FAITH,"rarity":2,"type":"ally_heal_aura","value":0.5,"desc":"友方生物每秒回 0.5 HP"},
 		"thorn_armor":{"id":"thorn_armor","name":"荆棘装甲","faction":Faction.NATURE,"rarity":1,"type":"thorns","value":5,"desc":"城堡受击反弹 5 伤害"},
 		"fertile_soil":{"id":"fertile_soil","name":"肥沃土壤","faction":Faction.NATURE,"rarity":2,"type":"nature_boost","value":0.15,"desc":"自然派系攻击 +15%"},
+		"warehouse_module":{"id":"warehouse_module","name":"仓库模块","faction":Faction.NATURE,"rarity":1,"type":"warehouse","value":1,"desc":"治疗道具携带上限 +1"},
 		"trade_license":{"id":"trade_license","name":"贸易执照","faction":Faction.COMMERCE,"rarity":1,"type":"gold_boost","value":0.20,"desc":"金币收益 +20%"},
 		"black_market":{"id":"black_market","name":"黑市入口","faction":Faction.COMMERCE,"rarity":2,"type":"discount","value":0.15,"desc":"购买消耗 -15%"},
 		# 修复: xp_boost → behavior型 (记忆强化: 首次攻击附带眩晕)
@@ -519,6 +532,80 @@ func resurrect_creature(cid: String) -> bool:
 	print("[GameData] 复活仪式完成: %s" % cid)
 	return true
 
+## 24h 免费复活 — 立即设置一个 24h 后的可免费复活时间戳
+## 玩家可选择: 立即付费复活(500金+3灵魂) 或 等 24h 免费复活
+func enable_free_resurrect(cid: String) -> void:
+	if not creature_health.has(cid):
+		return
+	if not creature_health[cid]["is_dead"]:
+		return
+	var now: int = int(Time.get_unix_time_from_system())
+	var deadline: int = now + 24 * 60 * 60  # 24h 后
+	world_progress["free_resurrect_available"][cid] = deadline
+	print("[GameData] %s 已加入 24h 免费复活队列 (到期: %d)" % [cid, deadline])
+
+## 查询是否可免费复活
+func can_free_resurrect(cid: String) -> bool:
+	if not world_progress["free_resurrect_available"].has(cid):
+		return false
+	var now: int = int(Time.get_unix_time_from_system())
+	var deadline: int = world_progress["free_resurrect_available"][cid]
+	return now >= deadline
+
+## 查询免费复活剩余时间(秒)
+func free_resurrect_remaining(cid: String) -> int:
+	if not world_progress["free_resurrect_available"].has(cid):
+		return -1
+	var now: int = int(Time.get_unix_time_from_system())
+	var deadline: int = world_progress["free_resurrect_available"][cid]
+	return maxi(0, deadline - now)
+
+## 执行免费复活
+func perform_free_resurrect(cid: String) -> bool:
+	if not can_free_resurrect(cid):
+		return false
+	creature_health[cid]["current_hp"] = creature_health[cid]["max_hp"]
+	creature_health[cid]["stage"] = InjuryStage.HEALTHY
+	creature_health[cid]["is_dead"] = false
+	world_progress["free_resurrect_available"].erase(cid)
+	EventBus.creature_resurrected.emit(cid)
+	print("[GameData] %s 免费复活成功" % cid)
+	return true
+
+## 死亡时记录遗志位置(站位格 buff,后续放置的生物 +10% 攻击 持续 3 场战斗)
+## 简化: 用 "battle_count" 字段记录"剩余生效局数"
+func record_legacy(slot_index: int, cid: String) -> void:
+	world_progress["legacy_buffs"][slot_index] = {
+		"creature_id": cid,
+		"battles_left": 3,
+		"attack_bonus": 0.10,
+	}
+	print("[GameData] 站位格 %d 留下遗志(原主: %s,持续 3 场 +10%% 攻击)" % [slot_index, cid])
+
+## 战斗开始时,所有遗志 buff 局数 -1,失效则清掉
+func decrement_legacy_buffs() -> void:
+	var to_remove: Array[int] = []
+	for slot_idx: int in world_progress["legacy_buffs"]:
+		var buff: Dictionary = world_progress["legacy_buffs"][slot_idx]
+		buff["battles_left"] -= 1
+		if buff["battles_left"] <= 0:
+			to_remove.append(slot_idx)
+	for slot_idx: int in to_remove:
+		world_progress["legacy_buffs"].erase(slot_idx)
+
+## 查询某站位格是否还有遗志 buff
+func get_legacy_buff(slot_index: int) -> Dictionary:
+	return world_progress["legacy_buffs"].get(slot_index, {})
+
+## 获取某生物的有效攻击加成(含遗志 buff)
+func get_creature_attack_bonus(cid: String) -> float:
+	var bonus: float = 0.0
+	for slot_idx: int in world_progress["legacy_buffs"]:
+		var buff: Dictionary = world_progress["legacy_buffs"][slot_idx]
+		if buff.get("creature_id", "") == cid:
+			bonus = max(bonus, buff.get("attack_bonus", 0.0))
+	return bonus
+
 ## 使用治疗道具
 func use_heal_item(item_id: String, target_cid: String) -> bool:
 	if not healing_items.has(item_id) or healing_items[item_id] <= 0:
@@ -583,3 +670,43 @@ func get_available_creatures() -> Array[String]:
 		if not is_creature_dead(cid):
 			available.append(cid)
 	return available
+
+## 添加一只生物 — 同名生物支持第二只第三只…
+## HP 状态继承已有同名生物(若同名生物已存在且未死,新生物继承其 HP)
+## 若已死,新生物可"复活"为满血(企划书 10.2: 同名第二只可被复活用)
+func add_creature_duplicate(cid: String) -> void:
+	if not creature_database.has(cid):
+		return
+	var was_already_owned: bool = cid in player_creatures
+	player_creatures.append(cid)
+	# 初始化 HP
+	if not creature_health.has(cid):
+		_init_creature_health(cid)
+	elif was_already_owned and is_creature_dead(cid):
+		# 重复获取的同名生物: 如果之前那只死了,这只满血(企划书 10.2 灵魂转生)
+		creature_health[cid]["current_hp"] = creature_health[cid]["max_hp"]
+		creature_health[cid]["stage"] = InjuryStage.HEALTHY
+		creature_health[cid]["is_dead"] = false
+	# 如果同名生物活着,新生物继承相同 HP(共享)
+	EventBus.creature_acquired.emit(cid)
+
+## 统计每种生物的拥有数量 — 用于图鉴和"×2"显示
+func get_creature_count(cid: String) -> int:
+	var count: int = 0
+	for c: String in player_creatures:
+		if c == cid:
+			count += 1
+	return count
+
+## 统计所有生物种类的拥有数(去重)
+func get_creature_kinds() -> Array[String]:
+	var kinds: Array[String] = []
+	for c: String in player_creatures:
+		if c not in kinds:
+			kinds.append(c)
+	return kinds
+
+## 调试:打印当前所有玩家生物
+func debug_print_creatures() -> void:
+	print("[GameData] player_creatures = ", player_creatures)
+	print("[GameData] creature_health keys = ", creature_health.keys())

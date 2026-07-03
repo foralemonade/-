@@ -46,13 +46,15 @@ func _setup_ui() -> void:
 		_create_button("新游戏", 250, "_new_game")
 
 	_create_button("阵营商店", 350, "_open_shop")
-	_create_button("无限挑战", 420, "_open_challenge")
-	_create_button("原型战斗", 490, "_open_test")
+	_create_button("城堡管理", 420, "_open_castle")
+	_create_button("生物图鉴", 490, "_open_codex")
+	_create_button("无限挑战", 560, "_open_challenge")
+	_create_button("原型战斗", 630, "_open_test")
 
 	# 版本
 	var ver := Label.new()
-	ver.text = "v0.3 | Godot 4.6 | 五大派系 x 六大陆 x 20只生物"
-	ver.position = Vector2(0, 680)
+	ver.text = "v0.5 | Godot 4.6 | 五大派系 x 六大陆 x 21只生物"
+	ver.position = Vector2(0, 700)
 	ver.size = Vector2(1280, 20)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.add_theme_font_size_override("font_size", 12)
@@ -72,6 +74,10 @@ func _create_button(txt: String, y_pos: float, method: String) -> void:
 			btn.pressed.connect(_on_new_game)
 		"_open_shop":
 			btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/faction_shop.tscn"))
+		"_open_castle":
+			btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/castle_management.tscn"))
+		"_open_codex":
+			btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/codex_ui.tscn"))
 		"_open_challenge":
 			btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/challenge_scene.tscn"))
 		"_open_test":

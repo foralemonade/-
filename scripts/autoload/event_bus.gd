@@ -13,6 +13,12 @@ signal enemy_killed(enemy_type: String, position: Vector2)
 signal enemy_reached_end(enemy: Node2D)
 signal enemy_spawned(enemy: Node2D)
 
+# ── 跨派系反应事件 ──
+## 战斗开始时同步广播触发的反应列表(每条带 name/desc/color)
+signal reaction_triggered(reactions: Array)
+## 单个反应视觉爆点(在战斗中触发时由 reaction_overlay 响应)
+signal reaction_pop(name: String, desc: String, color: Color)
+
 # ── 战斗阶段 ──
 signal battle_phase_changed(phase: String)  # "deploy" / "fight" / "pause" / "slow"
 signal wave_pause_started()                 # 波次间喘息开始

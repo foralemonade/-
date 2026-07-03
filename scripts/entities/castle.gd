@@ -48,6 +48,7 @@ func _ready() -> void:
 	current_shield = max_shield
 	_init_core_hp()
 	_init_slots()
+	apply_equipped_modules()
 	_init_synergy()
 	_draw_castle()
 	_draw_core_hp_bar()
@@ -79,7 +80,7 @@ func _init_slots() -> void:
 		var pos: Vector2 = Vector2.ZERO
 		if i < slot_positions.size():
 			pos = slot_positions[i]
-		var pos_type: int = _get_position_type_for_index(i)
+		var pos_type: int = get_position_type_for_index(i)
 		creature_slots.append({
 			"creature": null,
 			"creature_id": "",
@@ -104,6 +105,53 @@ func _init_synergy() -> void:
 	synergy_system = synergy_script.new()
 	synergy_system.name = "FactionSynergyCalculator"
 	add_child(synergy_system)
+
+## 应用已装备的模块效果 — 阶段3补全
+## - 圣图腾 holy_totem: 站位格 +1
+## - 多重 holy_totem 可叠加(但最多 4 个,8 槽上限)
+## - 强化装甲 reinforced_armor: max_shield +20
+## - 能量增幅器 energy_amplifier: shield_regen +0.5
+## - 祈祷祭坛 prayer_altar: shield_regen +1.5
+## - 荆棘装甲 thorn_armor: 反伤 5 (信号层)
+## - 贸易执照 trade_license: 通过 gold_boost 信号
+## - 黑市入口 black_market: 通过 discount 信号
+## - 记忆碎片 memory_shard: first_attack_stun
+## - 时间膨胀器 time_dilator: 全场敌人移速 -10%
+func apply_equipped_modules() -> void:
+	for mid: String in GameData.player_equipped_modules:
+		var data: Dictionary = GameData.get_module_data(mid)
+		if data.is_empty():
+			continue
+		var mtype: String = data.get("type", "")
+		var value: float = float(data.get("value", 0))
+		match mtype:
+			"slot":
+				# 站位格扩展(可叠加)
+				slot_count = mini(slot_count + int(value), 8)
+				GameData.castle_modules["creature_slots"] = slot_count
+				# 重建站位格
+				creature_slots.clear()
+				for i in range(slot_count):
+					var pos: Vector2 = Vector2.ZERO
+					if i < slot_positions.size():
+						pos = slot_positions[i]
+					creature_slots.append({
+						"creature": null,
+						"creature_id": "",
+						"position": pos,
+						"position_type": get_position_type_for_index(i),
+					})
+			"defense":
+				max_shield = int(max_shield + value)
+			"energy":
+				shield_regen += value
+			"regen":
+				shield_regen += value
+			# 其余模块在 game_data 或特定 system 中处理
+			_:
+				pass
+	# 实时更新 GameData 模块 buff 状态
+	GameData.castle_modules["max_shield"] = max_shield
 
 # ============================================================
 # 每帧更新 — 护盾恢复 + 挑战模式加成
@@ -295,8 +343,8 @@ func remove_creature(slot_index: int) -> bool:
 		slot["creature"].queue_free()
 		slot["creature"] = null
 		slot["creature_id"] = ""
-		_refresh_creature_ids()
-		_recalculate_synergies()
+		refresh_creature_ids()
+		recalculate_synergies()
 		EventBus.creature_removed.emit(slot_index)
 		return true
 	return false

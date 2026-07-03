@@ -22,18 +22,18 @@ func _init_shops():
 	faction_shops = {
 		GameData.Faction.TECH: {
 			"creatures": ["steel_hound","tesla_core","war_mech"],
-			"modules": ["reinforced_armor","energy_amplifier"],
-			"costs": {"steel_hound":300,"tesla_core":800,"war_mech":2000,"reinforced_armor":500,"energy_amplifier":1200},
+			"modules": ["reinforced_armor","energy_amplifier","scanner_drone"],
+			"costs": {"steel_hound":300,"tesla_core":800,"war_mech":2000,"reinforced_armor":500,"energy_amplifier":1200,"scanner_drone":350},
 		},
 		GameData.Faction.FAITH: {
 			"creatures": ["ritual_bell","phantom_priest","divine_guard"],
-			"modules": ["prayer_altar","holy_totem"],
-			"costs": {"ritual_bell":300,"phantom_priest":800,"divine_guard":2000,"prayer_altar":500,"holy_totem":1200},
+			"modules": ["prayer_altar","holy_totem","blessing_aura"],
+			"costs": {"ritual_bell":300,"phantom_priest":800,"divine_guard":2000,"prayer_altar":500,"holy_totem":1200,"blessing_aura":1000},
 		},
 		GameData.Faction.NATURE: {
 			"creatures": ["spore_flower","vine_guardian","elder_treant"],
-			"modules": ["thorn_armor","fertile_soil"],
-			"costs": {"spore_flower":300,"vine_guardian":800,"elder_treant":2000,"thorn_armor":500,"fertile_soil":1200},
+			"modules": ["thorn_armor","fertile_soil","warehouse_module"],
+			"costs": {"spore_flower":300,"vine_guardian":800,"elder_treant":2000,"thorn_armor":500,"fertile_soil":1200,"warehouse_module":400},
 		},
 		GameData.Faction.COMMERCE: {
 			"creatures": ["mercenary_broker","stock_analyst","trade_prince"],
@@ -66,11 +66,11 @@ func buy_item(faction: int, item_id: String) -> bool:
 	if not GameData.spend_resource("gold", cost): return false
 
 	if item_id in shop.get("creatures", []):
-		GameData.add_creature(item_id)
+		GameData.add_creature_duplicate(item_id)
 		EventBus.creature_acquired.emit(item_id)
 	elif item_id in shop.get("modules", []):
-		if item_id not in GameData.player_inventory_modules:
-			GameData.player_inventory_modules.append(item_id)
+		# 允许同模块叠加购买(比如圣图腾买多个 = 多个槽位)
+		GameData.player_inventory_modules.append(item_id)
 		EventBus.module_acquired.emit(item_id)
 	return true
 

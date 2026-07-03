@@ -58,6 +58,16 @@ func save_game() -> void:
 	config.set_value("world", "challenge_wave", GameData.world_progress.get("challenge_wave", 0))
 	config.set_value("world", "max_challenge_waves", GameData.world_progress.get("max_challenge_waves", 20))
 	config.set_value("world", "battle_protection_count", GameData.world_progress.get("battle_protection_count", 3))
+	# v0.5: 24h 免费复活时间戳
+	for cid: String in GameData.world_progress.get("free_resurrect_available", {}):
+		var deadline: int = GameData.world_progress["free_resurrect_available"][cid]
+		config.set_value("free_resurrect", cid, deadline)
+	# v0.5: 遗志 buff
+	for slot_idx: int in GameData.world_progress.get("legacy_buffs", {}):
+		var buff: Dictionary = GameData.world_progress["legacy_buffs"][slot_idx]
+		config.set_value("legacy", "slot_" + str(slot_idx) + "_cid", buff.get("creature_id", ""))
+		config.set_value("legacy", "slot_" + str(slot_idx) + "_battles_left", buff.get("battles_left", 0))
+		config.set_value("legacy", "slot_" + str(slot_idx) + "_attack_bonus", buff.get("attack_bonus", 0.0))
 
 	# ---- 城堡模块 ----
 	for key: String in GameData.castle_modules:
@@ -133,6 +143,28 @@ func load_game() -> bool:
 	GameData.world_progress["challenge_wave"] = config.get_value("world", "challenge_wave", 0)
 	GameData.world_progress["max_challenge_waves"] = config.get_value("world", "max_challenge_waves", 20)
 	GameData.world_progress["battle_protection_count"] = config.get_value("world", "battle_protection_count", 3)
+	# v0.5: 24h 免费复活
+	if "free_resurrect" in ch_sections:
+		for cid: String in config.get_section_keys("free_resurrect"):
+			GameData.world_progress["free_resurrect_available"][cid] = config.get_value("free_resurrect", cid, 0)
+	# v0.5: 遗志 buff
+	if "legacy" in ch_sections:
+		var legacy_keys: PackedStringArray = config.get_section_keys("legacy")
+		var seen_slots: Array[int] = []
+		for key: String in legacy_keys:
+			if key.ends_with("_cid"):
+				var slot_idx: int = int(key.replace("slot_", "").replace("_cid", ""))
+				seen_slots.append(slot_idx)
+		for slot_idx: int in seen_slots:
+			var cid: String = config.get_value("legacy", "slot_" + str(slot_idx) + "_cid", "")
+			var battles_left: int = config.get_value("legacy", "slot_" + str(slot_idx) + "_battles_left", 0)
+			var atk_bonus: float = config.get_value("legacy", "slot_" + str(slot_idx) + "_attack_bonus", 0.0)
+			if cid != "" and battles_left > 0:
+				GameData.world_progress["legacy_buffs"][slot_idx] = {
+					"creature_id": cid,
+					"battles_left": battles_left,
+					"attack_bonus": atk_bonus,
+				}
 
 	# ---- 城堡模块 ----
 	for key: String in GameData.castle_modules:
